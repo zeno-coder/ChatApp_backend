@@ -14,6 +14,10 @@ const io = new Server(server, {
 });
 
 app.use(express.json());
+// ✅ Redirect root to signup BEFORE serving static files
+app.get("/", (req, res) => {
+  res.redirect("/signup.html");
+});
 // Serve static files
 app.use(express.static(path.join(__dirname, "public")));
 
