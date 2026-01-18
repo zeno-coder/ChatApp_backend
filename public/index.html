@@ -1,0 +1,116 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat App</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Static Page Background -->
+  <div id="page-bg"></div>
+
+  <!-- Username prompt -->
+  <div id="username-prompt" class="username-prompt">
+    <input id="username-input" placeholder="Enter your name..." />
+    <button id="username-submit">Join Chat</button>
+  </div>
+
+  <!-- Header container (3-dot menu + switches) -->
+<div class="header-container" style="display:none">
+  <div class="menu-container">
+    <button id="menu-btn">⋮</button>
+    <div class="effect-switches" id="effect-switches">
+      <label><input type="checkbox" id="toggle-flowers" /> 🌸 Flowers</label>
+      <label><input type="checkbox" id="toggle-heart" /> ❤️ Heart</label>
+      <label><input type="checkbox" id="toggle-glow" checked /> 💫 Chat Glow</label>
+
+      <!-- 🎵 Music toggle (hidden by default) -->
+      <label id="toggle-music-label" style="display:none;">
+        <input type="checkbox" id="toggle-music" />
+        🎵 Music
+      </label>
+    </div>
+  </div>
+</div>
+
+
+ <!-- Chat Container -->
+<div class="chat-container" style="display:none">
+<!-- Mobile User Notifications -->
+<div id="mobile-user-notifications"></div>
+
+
+ <div id="active-users" class="active-users">
+  <h4>Online Users</h4>
+  <ul id="users-list"></ul>
+</div>
+
+
+  <!-- Music Navigator (Desktop Only, Top Center) -->
+  <div id="music-controller" style="display:none;">
+    <button id="prev-track">⏮</button>
+    <span id="track-name">Track 1</span>
+    <button id="play-pause">⏯</button>
+    <button id="next-track">⏭</button>
+  </div>
+
+  <div class="chat-main">
+    <ul id="messages"></ul>
+    <div id="typing-indicator" class="typing-indicator"></div>
+	<!-- Reply Bar (for showing replied message) -->
+<div id="reply-bar" style="display:none; background:#f0f0f0; padding:5px 10px; border-left:4px solid #ff69b4; margin-bottom:5px; border-radius:4px; font-size:0.9em; position:relative;">
+  <span id="replied-message-text"></span>
+  <button type="button" id="cancel-reply" style="position:absolute; right:5px; top:5px; background:none; border:none; cursor:pointer;">✖</button>
+</div>
+
+
+
+    <form id="form" action="">
+  <input id="input" autocomplete="off" placeholder="Type a message..." />
+
+
+  <!-- Mic Button Wrapper -->
+  <div style="position: relative; display:inline-block;">
+      <button type="button" id="record-btn" aria-pressed="false">🎤</button>
+
+      <!-- Slide-To-Cancel -->
+      <div id="slideToCancel" class="slide-cancel">← Slide to cancel</div>
+  </div>
+</form>
+
+
+
+  <!-- Effects Elements -->
+  <div id="lightning-container"></div>
+  <div id="flash-overlay"></div>
+
+ <script src="/socket.io/socket.io.js"></script>
+
+<!-- Inject Render environment variable -->
+<script>
+  // This will be read by script.js
+  const RENDER_MUSIC_ENABLED = "true"; // Set to "true" in Render env or "false" by default
+</script>
+
+<script src="script.js"></script>
+
+
+  <!-- Handle Username Submit -->
+  <script>
+    const usernameSubmit = document.getElementById("username-submit");
+    usernameSubmit.addEventListener("click", () => {
+      const name = document.getElementById("username-input").value.trim();
+      if (!name) return alert("Please enter your name");
+      window.joinChat(name);
+
+      document.querySelector(".header-container").style.display = "block";
+      document.querySelector(".chat-container").style.display = "flex";
+      document.getElementById("username-prompt").style.display = "none";
+    });
+  </script>
+
+</body>
+</html>
