@@ -1,8 +1,23 @@
-// script.js - full restored and fixed version
+  // script.js - full restored and fixed version
 
-const socket = io();
+const socket = io("/", {
+  auth: { token } // server will verify JWT
+});
+
 
 document.addEventListener("DOMContentLoaded", () => {
+
+  const token = localStorage.getItem("token");
+const user_id = localStorage.getItem("user_id");
+const username = localStorage.getItem("username");
+
+if (!token || !user_id || !username) {
+  window.location.href = "/login.html"; // redirect to login page
+} else {
+  document.querySelector(".header-container").style.display = "block";
+  document.querySelector(".chat-container").style.display = "flex";
+}
+
 
   /* ==========================
      Elements & globals
@@ -170,17 +185,6 @@ document.addEventListener("DOMContentLoaded", () => {
       usersList.appendChild(li);
     });
   }
-
-  window.joinChat = function(name) {
-    if (!name) return alert("Please enter your name");
-    username = name;
-    if (window.innerWidth >= 600) {
-      activeUsers.add(username);
-      updatePCActiveUsersList();
-    }
-    socket.emit("new user", username);
-  };
-
   /* ==========================
      Append message (handles replies)
      ========================== */
