@@ -1,7 +1,20 @@
   // script.js - full restored and fixed version
+const token = localStorage.getItem("token");
+
+if (!token) {
+  window.location.href = "/login.html";
+}
 
 const socket = io("/", {
   auth: { token } // server will verify JWT
+});
+
+socket.on("connect", () => {
+  console.log("✅ Socket connected", socket.id);
+});
+
+socket.on("connect_error", err => {
+  console.error("❌ Socket auth error:", err.message);
 });
 
 
