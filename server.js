@@ -14,7 +14,10 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.use(express.json());
 app.get("/", (req, res) => res.redirect("/signup.html"));
 app.use(express.static(path.join(__dirname, "public")));
-
+// Ping route
+app.get("/ping", (req, res) => {
+  res.send("Server is alive ✅");
+});
 const pool = new Pool({
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
