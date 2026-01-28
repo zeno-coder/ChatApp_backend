@@ -65,7 +65,6 @@ if (!token || !user_id || !username) {
   const flashOverlay = document.getElementById("flash-overlay");
 
   // State
-  let username = "";
   let messageCounter = 0;
   let repliedMessage = null; // { user, text } when replying
   let musicEnabled = false;
@@ -180,13 +179,6 @@ if (!token || !user_id || !username) {
   /* ==========================
      Active users & UI helpers
      ========================== */
-  socket.on("update users", (users) => {
-    if (window.innerWidth >= 600) {
-      activeUsers = new Set(users);
-      updatePCActiveUsersList();
-    }
-  });
-
   function updatePCActiveUsersList() {
     const usersList = document.getElementById("users-list");
     if (!usersList) return;
@@ -664,41 +656,26 @@ socket.on("voice message", (msg) => {
   }, { passive: true });
 
   
-  /*Notifications (join/leave) */
+  /* Notifications (join/leave) */
 
-     let previousUsers = [];
+let previousUsers = [];
 
 socket.on("update users", (userList) => {
   if (window.innerWidth >= 600) {
-    // Desktop: just update the active users list
-    updatePCActiveUsersList(userList);
+    // Desktop: ONLY update active users list
+    activeUsers = new Set(userList);
+    updatePCActiveUsersList();
   } else {
-    // Mobile: detect who joined or left
-    const joinedUsers = userList.filter((u) => !previousUsers.includes(u));
-    const leftUsers = previousUsers.filter((u) => !userList.includes(u));
+    // Mobile: join / leave notifications
+    const joinedUsers = userList.filter(u => !previousUsers.includes(u));
+    const leftUsers = previousUsers.filter(u => !userList.includes(u));
 
-    joinedUsers.forEach((user) => showMobileNotification(user, "joined"));
-    leftUsers.forEach((user) => showMobileNotification(user, "left"));
+    joinedUsers.forEach(user => showMobileNotification(user, "joined"));
+    leftUsers.forEach(user => showMobileNotification(user, "left"));
   }
 
   previousUsers = userList;
 });
-
-function showMobileNotification(uname, action) {
-  console.log("MOBILE NOTIFICATION TRIGGERED:", uname, action);
-
-  const container = document.getElementById("mobile-user-notifications");
-  if (!container) return;
-
-  const el = document.createElement("div");
-  el.classList.add("mobile-notification");
-  el.textContent = `${uname} ${action}`;
-
-  container.appendChild(el);
-
-  setTimeout(() => el.remove(), 3000);
-}
-
  /*Typing & Recording indicators */
 input.addEventListener("input", () => {
   if (!isTyping) socket.emit("typing", username);

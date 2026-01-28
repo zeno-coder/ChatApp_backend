@@ -1,33 +1,29 @@
-// login.js
-document.getElementById("login-btn").addEventListener("click", async () => {
-  const username = document.getElementById("username").value.trim();
-  const password = document.getElementById("password").value.trim();
-  const errorMsg = document.getElementById("error-msg");
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("login-btn");
+  if (!btn) return;
 
-  if (!username || !password) {
-    errorMsg.textContent = "Please fill both fields";
-    return;
-  }
+  btn.addEventListener("click", async () => {
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
 
-  try {
-    const res = await fetch("/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password })
-    });
+    try {
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
 
-    if (res.ok) {
+      if (!res.ok) throw new Error(await res.text());
+
       const data = await res.json();
+
       localStorage.setItem("token", data.token);
       localStorage.setItem("user_id", data.user_id);
       localStorage.setItem("username", data.username);
+
       window.location.href = "/index.html";
-    } else {
-      const text = await res.text();
-      errorMsg.textContent = text || "Login failed";
+    } catch (err) {
+      alert(err.message);
     }
-  } catch (err) {
-    console.error(err);
-    errorMsg.textContent = "Server error";
-  }
+  });
 });

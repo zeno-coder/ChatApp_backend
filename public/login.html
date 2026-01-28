@@ -1,22 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login</title>
+  <link rel="stylesheet" href="/assets/auth.css" />
 </head>
+
 <body>
 
-  <h1>Login</h1>
+  <div class="auth-container">
+    <h2>Welcome Back 👋</h2>
 
-  <input type="text" id="username" placeholder="Username">
-  <input type="password" id="password" placeholder="Password">
+    <input type="text" id="username" placeholder="Username" />
+    <input type="password" id="password" placeholder="Password" />
 
-  <button id="login-btn">Login</button>
+<button id="login-btn">Login now</button>
 
-  <p id="error-msg" style="color:red;"></p>
+    <p>Don't have an account?
+      <a href="/signup.html">Sign up</a>
+    </p>
+  </div>
 
-  <p>Don't have an account? <a href="signup.html">Sign up</a></p>
-
-  <script src="login.js"></script>
+  <script src="/login.js"></script>
 </body>
 </html>
