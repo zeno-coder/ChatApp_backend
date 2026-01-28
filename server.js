@@ -14,6 +14,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.use(express.json());
 app.get("/", (req, res) => res.redirect("/signup.html"));
 app.use(express.static(path.join(__dirname, "public")));
+app.get("/ping", (req, res) => res.status(200).send("Server is alive ✅"));
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }  // required for Render
@@ -254,15 +255,3 @@ socket.on("stop recording", () => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 const axios = require("axios"); // add this at the top if not already
-
-// Self-ping keep-alive every 5 minutes
-setInterval(async () => {
-  try {
-    const url = `https://${process.env.RENDER_EXTERNAL_URL || "localhost:" + PORT}/ping`;
-    const res = await axios.get(url);
-    console.log(`💓 Keep-alive ping sent: ${res.status} ${res.data}`);
-  } catch (err) {
-    console.error("⚠️ Keep-alive ping umbi:", err.message);
-  }
-}, 1 * 60 * 1000); // 5 minutes
-
