@@ -14,7 +14,6 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.use(express.json());
 app.get("/", (req, res) => res.redirect("/signup.html"));
 app.use(express.static(path.join(__dirname, "public")));
-app.get("/ping", (req, res) => res.status(200).send("Server is alive ✅"));
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }  // required for Render
@@ -251,6 +250,9 @@ socket.on("stop recording", () => {
     }
   });
 });
-
+// Ping route
+app.get("/ping", (req, res) => {
+  res.send("Server is alive ✅");
+});
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
