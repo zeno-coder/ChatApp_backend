@@ -14,14 +14,9 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.use(express.json());
 app.get("/", (req, res) => res.redirect("/signup.html"));
 app.use(express.static(path.join(__dirname, "public")));
-
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  ssl: false
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }  // required for Render
 });
 // Helper to generate unique 4-digit room codes
 async function generateRoomCode() {
@@ -34,6 +29,7 @@ async function generateRoomCode() {
   }
   return code;
 }
+
 
 // DB init
 async function initDB() {
@@ -370,6 +366,9 @@ socket.on("disconnect", async () => {
   }
 });
 });
-
+// Ping route
+app.get("/ping", (req, res) => {
+  res.send("Server is alive ✅");
+});
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
