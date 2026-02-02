@@ -2,22 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign Up</title>
   <link rel="stylesheet" href="/assets/auth.css" />
 </head>
 <body>
 
-  <div class="auth-container">
-    <h2>Create Account ✨</h2>
+<div class="auth-container">
+  <h2>Create Account ✨</h2>
 
-    <input type="text" id="username" placeholder="Username" />
-    <input type="password" id="password" placeholder="Password" />
+  <input type="text" id="username" placeholder="Username" />
+  <input type="password" id="password" placeholder="Password" />
 
-<button id="signup-btn">Sign Up</button>
-    <p>Already have an account?                                                                                                                                                                                                                                                                                   
-      <a href="/login.html">Login</a>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
-    </p>            
-  </div>
+  <!-- NEW: optional room code -->
+  <input
+    type="text"
+    id="room-code"
+    placeholder="Room Code (optional)"
+    maxlength="4"
+    inputmode="numeric"
+  />
+
+  <button id="signup-btn">Sign Up</button>
+
+  <p>
+    Already have an account?
+    <a href="/login.html">Login</a>
+  </p>
+</div>
+
 
   <script src="/signup.js"></script>
 </body>

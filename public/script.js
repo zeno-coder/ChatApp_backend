@@ -754,7 +754,8 @@ function updateIndicator() {
   "/assets/l26.jpg",
   "/assets/l26.jpg",
   "/assets/l27.jpg",
-  "assets/l28.jpg"
+  "/assets/l28.jpg",
+  "/assets/l29.jpg"
 ];
 
   let bgIndex = 0;
@@ -785,6 +786,60 @@ function updateIndicator() {
       }
     });
   }
+/* ==========================
+   Room Code button (FINAL FIX)
+   ========================== */
+const roomCodeBtn = document.getElementById("room-code-btn");
+let roomCode = null;
+
+// Ask server for current room status
+function refreshRoomCode() {
+  socket.emit("check room", null, async (roomStatus) => {
+    // roomStatus = { filled, code }
+    if (roomStatus.filled) {
+      roomCodeBtn.style.display = "none";
+      return;
+    }
+
+    // If code already exists → show it
+    if (roomStatus.code) {
+      roomCode = roomStatus.code;
+      roomCodeBtn.style.display = "flex";
+      roomCodeBtn.textContent = `🆔 Room Code: ${roomCode}`;
+    } else {
+      // No code yet → generate one
+      try {
+        const res = await fetch("/generate-room-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id })
+        });
+
+        const data = await res.json();
+        roomCode = data.room_code;
+
+        roomCodeBtn.style.display = "flex";
+        roomCodeBtn.textContent = `🆔 Room Code: ${roomCode}`;
+      } catch (err) {
+        console.error("Room code generation failed", err);
+      }
+    }
+  });
+}
+
+// Run once on load
+refreshRoomCode();
+
+// Re-check when users change (room fills)
+socket.on("update users", refreshRoomCode);
+
+// Click → copy / show
+roomCodeBtn.addEventListener("click", () => {
+  if (!roomCode) return;
+  navigator.clipboard?.writeText(roomCode);
+  alert(`Room Code: ${roomCode}`);
+});
+
 
   /* ==========================
      Swipe / Drag to reply (works for mobile, desktop, and click)

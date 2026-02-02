@@ -23,6 +23,17 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   ssl: false
 });
+// Helper to generate unique 4-digit room codes
+async function generateRoomCode() {
+  let code;
+  let exists = true;
+  while (exists) {
+    code = Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit code
+    const res = await pool.query("SELECT * FROM rooms WHERE room_code=$1", [code]);
+    if (res.rows.length === 0) exists = false;
+  }
+  return code;
+}
 
 // DB init
 async function initDB() {
@@ -33,12 +44,16 @@ async function initDB() {
       password_hash TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
     CREATE TABLE IF NOT EXISTS rooms (
       room_id SERIAL PRIMARY KEY,
       user_1_id INT REFERENCES users(user_id),
       user_2_id INT REFERENCES users(user_id),
+      room_code VARCHAR(4) UNIQUE,
+      locked BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
     CREATE TABLE IF NOT EXISTS messages (
       message_id SERIAL PRIMARY KEY,
       room_id INT REFERENCES rooms(room_id) ON DELETE CASCADE,
@@ -49,13 +64,16 @@ async function initDB() {
   `);
   console.log("✅ Tables ready");
 }
-initDB();
+initDB().catch(err => {
+  console.error("❌ DB init failed:", err);
+});
 
-// Signup
+// Signup (normal or with room code)
 app.post("/signup", async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, room_code } = req.body;
   if (!username || !password) return res.status(400).send("Missing fields");
   const hash = await bcrypt.hash(password, 10);
+
   try {
     const insert = await pool.query(
       "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING *",
@@ -63,26 +81,88 @@ app.post("/signup", async (req, res) => {
     );
     const user = insert.rows[0];
 
-    // Assign to 2-user room
-    let room = await pool.query(
-      "SELECT * FROM rooms WHERE user_2_id IS NULL AND user_1_id <> $1 ORDER BY created_at ASC LIMIT 1",
-      [user.user_id]
-    );
-    if (room.rows.length > 0) {
-      await pool.query(
-        "UPDATE rooms SET user_2_id=$1 WHERE room_id=$2",
-        [user.user_id, room.rows[0].room_id]
-      );
-    } else {
-      await pool.query("INSERT INTO rooms (user_1_id) VALUES ($1)", [user.user_id]);
+    let roomId;
+
+    if (room_code) {
+  const roomRes = await pool.query(
+    "SELECT * FROM rooms WHERE room_code=$1 AND user_2_id IS NULL",
+    [room_code]
+  );
+
+  if (roomRes.rows.length === 0) {
+    return res.status(404).send("Invalid or full room code");
+  }
+
+  // ✅ assign to outer roomId
+  roomId = roomRes.rows[0].room_id;
+
+  await pool.query(
+    "UPDATE rooms SET user_2_id=$1, locked=true WHERE room_id=$2",
+    [user.user_id, roomId]
+  );
+}
+ else {
+      // Normal signup → create new room with user_1_id
+const code = await generateRoomCode();
+const newRoom = await pool.query(
+  "INSERT INTO rooms (user_1_id, room_code) VALUES ($1, $2) RETURNING *",
+  [user.user_id, code]
+);
+roomId = newRoom.rows[0].room_id;
+
     }
 
     const token = jwt.sign({ user_id: user.user_id }, process.env.JWT_SECRET);
-    res.status(201).json({ token, user_id: user.user_id, username: user.username });
+    res.status(201).json({ token, user_id: user.user_id, username: user.username, room_id: roomId });
   } catch (err) {
     if (err.code === '23505') return res.status(409).send("Username taken");
     console.error(err);
     res.status(500).send("Server error");
+  }
+});
+// Generate room code for user_1 (3-dot menu)
+app.post("/generate-room-code", async (req, res) => {
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ error: "Missing user_id" });
+  }
+
+  try {
+    // Only user_1 can generate / see room code
+    const roomRes = await pool.query(
+      "SELECT * FROM rooms WHERE user_1_id = $1",
+      [user_id]
+    );
+
+    if (roomRes.rows.length === 0) {
+      return res.status(403).json({ error: "Not room owner" });
+    }
+
+    const room = roomRes.rows[0];
+
+    // If room already full, don't regenerate
+    if (room.user_2_id) {
+      return res.json({ room_code: null });
+    }
+
+    // If already has a code, reuse it
+    if (room.room_code) {
+      return res.json({ room_code: room.room_code });
+    }
+
+    // Generate new code
+    const code = await generateRoomCode();
+
+    await pool.query(
+      "UPDATE rooms SET room_code=$1 WHERE room_id=$2",
+      [code, room.room_id]
+    );
+
+    res.json({ room_code: code });
+  } catch (err) {
+    console.error("Generate room code failed:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -93,32 +173,38 @@ app.post("/login", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM users WHERE LOWER(username)=LOWER($1)", [username]);
     if (!result.rows[0]) return res.status(401).send("User not found");
+
     const valid = await bcrypt.compare(password, result.rows[0].password_hash);
     if (!valid) return res.status(401).send("Wrong password");
 
     const user = result.rows[0];
 
-    // Assign room if not yet assigned
-    let room = await pool.query("SELECT * FROM rooms WHERE user_1_id=$1 OR user_2_id=$1", [user.user_id]);
-    if (room.rows.length === 0) {
-      let available = await pool.query(
-        "SELECT * FROM rooms WHERE user_2_id IS NULL AND user_1_id <> $1 ORDER BY created_at ASC LIMIT 1",
-        [user.user_id]
-      );
-      if (available.rows.length > 0) {
-        await pool.query("UPDATE rooms SET user_2_id=$1 WHERE room_id=$2", [user.user_id, available.rows[0].room_id]);
-      } else {
-        await pool.query("INSERT INTO rooms (user_1_id) VALUES ($1)", [user.user_id]);
+    // Fetch the user's room (permanent)
+    let roomRes = await pool.query("SELECT * FROM rooms WHERE user_1_id=$1 OR user_2_id=$1", [user.user_id]);
+    let roomId = null;
+
+    if (roomRes.rows.length > 0) {
+      roomId = roomRes.rows[0].room_id;
+
+      // If user is second in the room and DB has empty user_2_id, update it
+      const room = roomRes.rows[0];
+      if (room.user_1_id !== user.user_id && !room.user_2_id) {
+        await pool.query(
+          "UPDATE rooms SET user_2_id=$1, locked=true WHERE room_id=$2",
+          [user.user_id, roomId]
+        );
       }
     }
 
     const token = jwt.sign({ user_id: user.user_id }, process.env.JWT_SECRET);
-    res.json({ token, user_id: user.user_id, username: user.username });
+    res.json({ token, user_id: user.user_id, username: user.username, room_id: roomId });
   } catch (err) {
     console.error(err);
     res.status(500).send("Server error");
   }
 });
+
+
 
 // Socket auth
 io.use(async (socket, next) => {
@@ -171,7 +257,7 @@ io.on("connection", async (socket) => {
 
   // Broadcast active users
   // --- add this helper at the top of io.on("connection") ---
-async function broadcastActiveUsers(roomId) {
+async function broadcastActiveUsers(io, pool, roomSockets, roomId) {
   const userIds = Array.from(roomSockets.get(roomId) || []);
   if (userIds.length === 0) return;
 
@@ -184,11 +270,13 @@ async function broadcastActiveUsers(roomId) {
   io.to(`room_${roomId}`).emit("update users", activeUsers);
 }
 
+
 // --- inside connection, after user joins room ---
-await broadcastActiveUsers(roomId);
+await broadcastActiveUsers(io, pool, roomSockets, roomId);
 
 // --- inside disconnect, after removing user from roomSockets ---
-await broadcastActiveUsers(roomId);
+await broadcastActiveUsers(io, pool, roomSockets, roomId);
+
 
 
   // Chat message
@@ -217,6 +305,31 @@ await broadcastActiveUsers(roomId);
   // Fetch username once when connection starts
 const userRes = await pool.query("SELECT username FROM users WHERE user_id=$1", [socket.user_id]);
 const username = userRes.rows[0].username;
+// ---------------------------
+// Room Code logic
+// ---------------------------
+socket.on("check room", async (_, callback) => {
+  try {
+    const roomRes = await pool.query(
+      "SELECT room_code, room_id FROM rooms WHERE user_1_id=$1 OR user_2_id=$1",
+      [socket.user_id]
+    );
+
+    if (roomRes.rows.length === 0) return callback({ filled: true, code: null });
+
+    const room = roomRes.rows[0];
+
+    // ✅ Use live occupancy from roomSockets instead of DB user_2_id
+    const liveUsers = roomSockets.get(room.room_id) || new Set();
+    const filled = liveUsers.size >= 2; // room is full if 2 users connected
+
+    callback({ filled, code: room.room_code });
+  } catch (err) {
+    console.error("Room code check failed:", err);
+    callback({ filled: true, code: null });
+  }
+});
+
 
 // Typing indicators (only notify other users)
 socket.on("typing", () => {
@@ -241,18 +354,21 @@ socket.on("stop recording", () => {
   });
 
   // Disconnect
-  socket.on("disconnect", () => {
-    console.log("User disconnected:", userId);
-    const socketsSet = userSockets.get(userId);
-    if (socketsSet) {
-      socketsSet.delete(socket.id);
-      if (socketsSet.size === 0) {
-        userSockets.delete(userId);
-        roomSockets.get(roomId)?.delete(userId);
-        io.to(`room_${roomId}`).emit("update users", Array.from(roomSockets.get(roomId) || []));
-      }
+socket.on("disconnect", async () => {
+  console.log("User disconnected:", userId);
+
+  const socketsSet = userSockets.get(userId);
+  if (socketsSet) {
+    socketsSet.delete(socket.id);
+
+    if (socketsSet.size === 0) {
+      userSockets.delete(userId);
+      roomSockets.get(roomId)?.delete(userId);
+
+      await broadcastActiveUsers(io, pool, roomSockets, roomId);
     }
-  });
+  }
+});
 });
 
 const PORT = process.env.PORT || 3000;
