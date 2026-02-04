@@ -34,6 +34,7 @@ document.addEventListener("DOMContentLoaded", () => {
       localStorage.setItem("token", data.token);
       localStorage.setItem("user_id", data.user_id);
       localStorage.setItem("username", data.username);
+      localStorage.setItem("room_id", data.room_id);
 
       window.location.href = "/index.html";
     } catch (err) {

@@ -14,10 +14,22 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.use(express.json());
 app.get("/", (req, res) => res.redirect("/signup.html"));
 app.use(express.static(path.join(__dirname, "public")));
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }  // required for Render
-});
+const pool = new Pool(
+  process.env.DATABASE_URL
+    ? {
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false } // Render
+      }
+    : {
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        ssl: false // Local Postgres
+      }
+);
+
 // Helper to generate unique 4-digit room codes
 async function generateRoomCode() {
   let code;
@@ -108,7 +120,11 @@ roomId = newRoom.rows[0].room_id;
 
     }
 
-    const token = jwt.sign({ user_id: user.user_id }, process.env.JWT_SECRET);
+    const token = jwt.sign(
+  { user_id: user.user_id },
+  process.env.JWT_SECRET,
+  { expiresIn: "7d" }
+);
     res.status(201).json({ token, user_id: user.user_id, username: user.username, room_id: roomId });
   } catch (err) {
     if (err.code === '23505') return res.status(409).send("Username taken");
@@ -184,7 +200,7 @@ app.post("/login", async (req, res) => {
 
       // If user is second in the room and DB has empty user_2_id, update it
       const room = roomRes.rows[0];
-      if (room.user_1_id !== user.user_id && !room.user_2_id) {
+      if (room.user_2_id === null && room.user_1_id !== user.user_id) {
         await pool.query(
           "UPDATE rooms SET user_2_id=$1, locked=true WHERE room_id=$2",
           [user.user_id, roomId]
@@ -192,7 +208,11 @@ app.post("/login", async (req, res) => {
       }
     }
 
-    const token = jwt.sign({ user_id: user.user_id }, process.env.JWT_SECRET);
+    const token = jwt.sign(
+  { user_id: user.user_id },
+  process.env.JWT_SECRET,
+  { expiresIn: "7d" }
+);
     res.json({ token, user_id: user.user_id, username: user.username, room_id: roomId });
   } catch (err) {
     console.error(err);
@@ -200,7 +220,19 @@ app.post("/login", async (req, res) => {
   }
 });
 
+  // Broadcast active users
+async function broadcastActiveUsers(io, pool, roomSockets, roomId) {
+  const userIds = Array.from(roomSockets.get(roomId) || []);
+  if (userIds.length === 0) return;
 
+  const res = await pool.query(
+    "SELECT username FROM users WHERE user_id = ANY($1::int[])",
+    [userIds]
+  );
+
+  const activeUsers = res.rows.map(r => r.username);
+  io.to(`room_${roomId}`).emit("update users", activeUsers);
+}
 
 // Socket auth
 io.use(async (socket, next) => {
@@ -251,22 +283,6 @@ io.on("connection", async (socket) => {
   );
   socket.emit("joined_room", { room_id: roomId, messages: messages.rows });
 
-  // Broadcast active users
-  // --- add this helper at the top of io.on("connection") ---
-async function broadcastActiveUsers(io, pool, roomSockets, roomId) {
-  const userIds = Array.from(roomSockets.get(roomId) || []);
-  if (userIds.length === 0) return;
-
-  const res = await pool.query(
-    "SELECT username FROM users WHERE user_id = ANY($1::int[])",
-    [userIds]
-  );
-
-  const activeUsers = res.rows.map(r => r.username);
-  io.to(`room_${roomId}`).emit("update users", activeUsers);
-}
-
-
 // --- inside connection, after user joins room ---
 await broadcastActiveUsers(io, pool, roomSockets, roomId);
 
@@ -276,18 +292,22 @@ await broadcastActiveUsers(io, pool, roomSockets, roomId);
 
 
   // Chat message
-  socket.on("chat message", async (msg) => {
-    const insert = await pool.query(
-      "INSERT INTO messages (room_id, sender_id, message_content) VALUES ($1,$2,$3) RETURNING *",
-      [roomId, userId, msg.text]
-    );
-    io.to(`room_${roomId}`).emit("chat message", {
-      user: msg.user,
-      text: msg.text,
-      id: insert.rows[0].message_id,
-      ts: insert.rows[0].timestamp
-    });
+socket.on("chat message", async (msg) => {
+  if (!msg || typeof msg.text !== "string" || !msg.text.trim()) return;
+
+  const insert = await pool.query(
+    "INSERT INTO messages (room_id, sender_id, message_content) VALUES ($1,$2,$3) RETURNING *",
+    [roomId, userId, msg.text]
+  );
+
+  io.to(`room_${roomId}`).emit("chat message", {
+    user: msg.user,
+    text: msg.text,
+    id: insert.rows[0].message_id,
+    ts: insert.rows[0].timestamp
   });
+});
+
 
   // Voice messages
   socket.on("voice message", async (msg) => {
@@ -307,17 +327,18 @@ const username = userRes.rows[0].username;
 socket.on("check room", async (_, callback) => {
   try {
     const roomRes = await pool.query(
-      "SELECT room_code, room_id FROM rooms WHERE user_1_id=$1 OR user_2_id=$1",
+      "SELECT room_code, user_2_id FROM rooms WHERE user_1_id=$1 OR user_2_id=$1",
       [socket.user_id]
     );
 
-    if (roomRes.rows.length === 0) return callback({ filled: true, code: null });
+    if (roomRes.rows.length === 0) {
+      return callback({ filled: true, code: null });
+    }
 
     const room = roomRes.rows[0];
 
-    // ✅ Use live occupancy from roomSockets instead of DB user_2_id
-    const liveUsers = roomSockets.get(room.room_id) || new Set();
-    const filled = liveUsers.size >= 2; // room is full if 2 users connected
+    // ✅ DB is source of truth
+    const filled = !!room.user_2_id;
 
     callback({ filled, code: room.room_code });
   } catch (err) {
@@ -325,6 +346,7 @@ socket.on("check room", async (_, callback) => {
     callback({ filled: true, code: null });
   }
 });
+
 
 
 // Typing indicators (only notify other users)
@@ -345,7 +367,9 @@ socket.on("stop recording", () => {
 
   // Delete message
   socket.on("delete message", async (data) => {
-    await pool.query("DELETE FROM messages WHERE message_id=$1", [data.targetId]);
+    await pool.query("DELETE FROM messages WHERE message_id=$1 AND sender_id=$2",[data.targetId, userId]
+);
+
     io.to(`room_${roomId}`).emit("delete message", data);
   });
 
